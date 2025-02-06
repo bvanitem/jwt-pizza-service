@@ -46,14 +46,19 @@ test('register', async () => {
 });
 
 test('logout', async () => {
-  const loginRes = await request(app).put('/api/auth').send(testUser);
-  authToken = loginRes.body.token;
-  
-  const logoutRes = await request(app)
-    .delete('/api/auth')
-    .set('Authorization', `Bearer ${authToken}`);
-  
-  expect(logoutRes.body.message).toBe('logout successful');
+  const logoutRes = (await request(app).delete('/api/auth').set('Authorization', `Bearer ${testUserAuthToken}`));
+  expect(logoutRes.status).toBe(200);
+  expect(logoutRes.body.message).toMatch('logout successful');
+});
+
+test('admin login', async () => {
+  const adminUser = await createAdminUser();
+  const loginRes = (await request(app).put('/api/auth').send(adminUser));
+  expect(loginRes.status).toBe(200);
+
+  const expectedUser = { ...adminUser, roles: [{ role: 'admin' }] };
+  delete expectedUser.password;
+  expect(loginRes.body.user).toMatchObject(expectedUser);  
 });
 
 
