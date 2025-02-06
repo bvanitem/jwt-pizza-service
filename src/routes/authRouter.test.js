@@ -1,8 +1,8 @@
 const request = require('supertest');
 const app = require('../service');
 
+let testUserAuthToken, adminUser;
 const testUser = { name: 'pizza diner', email: 'reg@test.com', password: 'a' };
-let testUserAuthToken;
 
 const { Role, DB } = require('../database/database.js');
 
@@ -17,51 +17,69 @@ async function createAdminUser() {
 
 function randomName() {
     return Math.random().toString(36).substring(2, 12);
-  }
+}
+
+function expectValidJwt(potentialJwt) {
+    expect(potentialJwt).toMatch(/^[a-zA-Z0-9\-_]*\.[a-zA-Z0-9\-_]*\.[a-zA-Z0-9\-_]*$/);
+}
 
 beforeAll(async () => {
   testUser.email = randomName() + '@test.com';
   const registerRes = await request(app).post('/api/auth').send(testUser);
   testUserAuthToken = registerRes.body.token;
   expectValidJwt(testUserAuthToken);
+
+  adminUser = await createAdminUser();
+  const adminLoginResponse = await request(app).put('/api/auth').send(adminUser);
+  adminToken = adminLoginResponse.body.token;
+  expectValidJwt(adminToken);
 });
 
 test('login', async () => {
-  const loginRes = await request(app).put('/api/auth').send(testUser);
-  expect(loginRes.status).toBe(200);
-  expectValidJwt(loginRes.body.token);
+  const loginResponse = await request(app).put('/api/auth').send(testUser);
+  expect(loginResponse.status).toBe(200);
+  expectValidJwt(loginResponse.body.token);
 
   const expectedUser = { ...testUser, roles: [{ role: 'diner' }] };
   delete expectedUser.password;
-  expect(loginRes.body.user).toMatchObject(expectedUser);
+  expect(loginResponse.body.user).toMatchObject(expectedUser);
+});
+
+test('login unknown', async () =>{
+  const unknownUser = {name: 'unknown', email: 'unknown@unknown.unknown', password: 'unknownunknown'};
+  const loginResponse = await request(app).put('/api/auth').send(unknownUser);
+  expect(loginResponse.status).toBe(404);
+  expect(loginResponse.body.message).toMatch('unknown user');
 });
 
 test('register', async () => {
-  const loginRes = await request(app).post('/api/auth').send(testUser);
-  expect(loginRes.status).toBe(200);
-  expect(loginRes.body.user).toHaveProperty('id');
-  expect(loginRes.body.user.email).toBe(testUser.email);
-  expect(loginRes.body.user.roles).toEqual([{ role: 'diner' }]);
-  expect(loginRes.body).toHaveProperty('token');
+  const loginResponse = await request(app).post('/api/auth').send(testUser);
+  expect(loginResponse.status).toBe(200);
+  expect(loginResponse.body.user).toHaveProperty('id');
+  expect(loginResponse.body.user.email).toBe(testUser.email);
+  expect(loginResponse.body.user.roles).toEqual([{ role: 'diner' }]);
+  expect(loginResponse.body).toHaveProperty('token');
+});
+
+
+test('register with missing fields', async () => {
+  const response = await request(app).post('/api/auth').send({ email: 'test@test.com' });
+  expect(response.status).toBe(400);
+  expect(response.body.message).toBe('name, email, and password are required');
 });
 
 test('logout', async () => {
-  const logoutRes = (await request(app).delete('/api/auth').set('Authorization', `Bearer ${testUserAuthToken}`));
-  expect(logoutRes.status).toBe(200);
-  expect(logoutRes.body.message).toMatch('logout successful');
+  const logoutResponse = (await request(app).delete('/api/auth').set('Authorization', `Bearer ${testUserAuthToken}`));
+  expect(logoutResponse.status).toBe(200);
+  expect(logoutResponse.body.message).toMatch('logout successful');
 });
 
 test('admin login', async () => {
   const adminUser = await createAdminUser();
-  const loginRes = (await request(app).put('/api/auth').send(adminUser));
-  expect(loginRes.status).toBe(200);
+  const loginResponse = (await request(app).put('/api/auth').send(adminUser));
+  expect(loginResponse.status).toBe(200);
 
   const expectedUser = { ...adminUser, roles: [{ role: 'admin' }] };
   delete expectedUser.password;
-  expect(loginRes.body.user).toMatchObject(expectedUser);  
+  expect(loginResponse.body.user).toMatchObject(expectedUser);  
 });
-
-
-function expectValidJwt(potentialJwt) {
-  expect(potentialJwt).toMatch(/^[a-zA-Z0-9\-_]*\.[a-zA-Z0-9\-_]*\.[a-zA-Z0-9\-_]*$/);
-}
