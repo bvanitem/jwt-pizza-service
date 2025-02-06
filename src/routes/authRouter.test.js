@@ -1,7 +1,7 @@
 const request = require('supertest');
 const app = require('../service');
 
-let testUserAuthToken, adminUser;
+let testUserAuthToken, adminUser, adminToken;
 const testUser = { name: 'pizza diner', email: 'reg@test.com', password: 'a' };
 
 const { Role, DB } = require('../database/database.js');
