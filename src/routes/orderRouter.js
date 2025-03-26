@@ -3,6 +3,7 @@ const config = require('../config.js');
 const { Role, DB } = require('../database/database.js');
 const { authRouter } = require('./authRouter.js');
 const { asyncHandler, StatusCodeError } = require('../endpointHelper.js');
+const Logger = require('../logger.js');
 
 const orderRouter = express.Router();
 
@@ -79,16 +80,28 @@ orderRouter.post(
   asyncHandler(async (req, res) => {
     const orderReq = req.body;
     const order = await DB.addDinerOrder(req.user, orderReq);
-    const r = await fetch(`${config.factory.url}/api/order`, {
+    
+    const factoryPayload = { diner: { id: req.user.id, name: req.user.name, email: req.user.email }, order };
+    const factoryResponse = await fetch(`${config.factory.url}/api/order`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', authorization: `Bearer ${config.factory.apiKey}` },
-      body: JSON.stringify({ diner: { id: req.user.id, name: req.user.name, email: req.user.email }, order }),
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.factory.apiKey}` },
+      body: JSON.stringify(factoryPayload),
     });
-    const j = await r.json();
-    if (r.ok) {
-      res.send({ order, reportSlowPizzaToFactoryUrl: j.reportUrl, jwt: j.jwt });
+    
+    const factoryResult = await factoryResponse.json();
+    
+    // Log factory request
+    Logger.log(factoryResponse.ok ? 'info' : 'error', 'Factory service request', {
+      endpoint: '/api/order',
+      status: factoryResponse.status,
+      requestBody: Logger.sanitize(factoryPayload),
+      responseBody: Logger.sanitize(factoryResult),
+    });
+
+    if (factoryResponse.ok) {
+      res.send({ order, reportSlowPizzaToFactoryUrl: factoryResult.reportUrl, jwt: factoryResult.jwt });
     } else {
-      res.status(500).send({ message: 'Failed to fulfill order at factory', reportPizzaCreationErrorToPizzaFactoryUrl: j.reportUrl });
+      res.status(500).send({ message: 'Failed to fulfill order at factory', reportPizzaCreationErrorToPizzaFactoryUrl: factoryResult.reportUrl });
     }
   })
 );

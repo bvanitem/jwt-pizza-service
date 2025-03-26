@@ -4,10 +4,15 @@ const orderRouter = require('./routes/orderRouter.js');
 const franchiseRouter = require('./routes/franchiseRouter.js');
 const version = require('./version.json');
 const config = require('./config.js');
+const Logger = require('./logger.js'); // Add this
 
 const app = express();
 app.use(express.json());
 app.use(setAuthUser);
+
+// Add HTTP logging middleware
+app.use(Logger.httpLogger);
+
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE');
@@ -43,10 +48,10 @@ app.use('*', (req, res) => {
   });
 });
 
-// Default error handler for all exceptions and errors.
+// Updated error handler with logging
 app.use((err, req, res, next) => {
+  Logger.log('error', 'Unhandled exception', { error: err.message, stack: err.stack });
   res.status(err.statusCode ?? 500).json({ message: err.message, stack: err.stack });
-  next();
 });
 
 module.exports = app;
