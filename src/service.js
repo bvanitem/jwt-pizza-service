@@ -50,8 +50,8 @@ app.use('*', (req, res) => {
 
 // Updated error handler with logging
 app.use((err, req, res, next) => {
-  Logger.log('error', 'Unhandled exception', { error: err.message, stack: err.stack });
   res.status(err.statusCode ?? 500).json({ message: err.message, stack: err.stack });
+  next();
 });
 
 module.exports = app;
