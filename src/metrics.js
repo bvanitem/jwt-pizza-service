@@ -238,7 +238,7 @@ function trackOrders(status) {
 
 function trackRevenue(items) {
     revenue += items.reduce((total, item) => total + item.price, 0);
-    addDoubleMetric('revenue', revenue, 'sum', '1');
+    addDoubleMetric('revenue_total', revenue, 'sum', '1');
 }
   
 sendMetricsPeriodically(10000);
