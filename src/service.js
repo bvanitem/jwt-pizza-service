@@ -5,18 +5,19 @@ const franchiseRouter = require('./routes/franchiseRouter.js');
 const version = require('./version.json');
 const config = require('./config.js');
 const metrics = require('./metrics.js');
-// const Logger = require('./logger.js'); 
+// const Logger = require('./logger.js'); // Re-enabled Logger import
 
 const app = express();
-app.use(metrics.trackRequestLatency);
-app.use(metrics.requestTracker);
+
+// Add metrics tracking middleware
+app.use(metrics.trackRequestLatency); // Tracks request_latency
+app.use(metrics.requestTracker); // Tracks HTTP method metrics (requests, GET, POST, etc.)
+// Removed redundant app.use(trackRequestLatency) // CHANGE: Removed redundant and incorrect middleware call
 
 app.use(express.json());
 app.use(setAuthUser);
 
-app.use(trackRequestLatency);
-
-
+// Add HTTP logging middleware
 // app.use(Logger.httpLogger);
 
 app.use((req, res, next) => {
@@ -26,7 +27,6 @@ app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   next();
 });
-
 
 const apiRouter = express.Router();
 app.use('/api', apiRouter);
