@@ -3,7 +3,7 @@ const config = require('../config.js');
 const { Role, DB } = require('../database/database.js');
 const { authRouter } = require('./authRouter.js');
 const { asyncHandler, StatusCodeError } = require('../endpointHelper.js');
-// const Logger = require('../logger.js');
+const { trackOrders, trackRevenue } = require('../metrics.js'); 
 
 const orderRouter = express.Router();
 
@@ -79,29 +79,34 @@ orderRouter.post(
   authRouter.authenticateToken,
   asyncHandler(async (req, res) => {
     const orderReq = req.body;
-    const order = await DB.addDinerOrder(req.user, orderReq);
-    
-    const factoryPayload = { diner: { id: req.user.id, name: req.user.name, email: req.user.email }, order };
-    const factoryResponse = await fetch(`${config.factory.url}/api/order`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.factory.apiKey}` },
-      body: JSON.stringify(factoryPayload),
-    });
-    
-    const factoryResult = await factoryResponse.json();
-    
-    // Log factory request
-    // Logger.log(factoryResponse.ok ? 'info' : 'error', 'Factory service request', {
-    //   endpoint: '/api/order',
-    //   status: factoryResponse.status,
-    //   requestBody: Logger.sanitize(factoryPayload),
-    //   responseBody: Logger.sanitize(factoryResult),
-    // });
+    const user = req.user;
+    if (!user) {
+      trackOrders('failed');
+      throw new StatusCodeError('unauthorized', 401);
+    }
 
-    if (factoryResponse.ok) {
-      res.send({ order, reportSlowPizzaToFactoryUrl: factoryResult.reportUrl, jwt: factoryResult.jwt });
-    } else {
-      res.status(500).send({ message: 'Failed to fulfill order at factory', reportPizzaCreationErrorToPizzaFactoryUrl: factoryResult.reportUrl });
+    try {
+      const order = await DB.addDinerOrder(user, orderReq);
+      const factoryPayload = { diner: { id: user.id, name: user.name, email: user.email }, order };
+      const factoryResponse = await fetch(`${config.factory.url}/api/order`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.factory.apiKey}` },
+        body: JSON.stringify(factoryPayload),
+      });
+
+      const factoryResult = await factoryResponse.json();
+
+      if (factoryResponse.ok) {
+        trackOrders('fulfilled'); 
+        trackRevenue(orderReq.items); 
+        res.send({ order, reportSlowPizzaToFactoryUrl: factoryResult.reportUrl, jwt: factoryResult.jwt });
+      } else {
+        trackOrders('failed'); 
+        res.status(500).send({ message: 'Failed to fulfill order at factory', reportPizzaCreationErrorToPizzaFactoryUrl: factoryResult.reportUrl });
+      }
+    } catch (error) {
+      trackOrders('failed'); 
+      throw new StatusCodeError(error.message, 500);
     }
   })
 );

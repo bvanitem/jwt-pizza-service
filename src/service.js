@@ -9,10 +9,14 @@ const metrics = require('./metrics.js');
 
 const app = express();
 app.use(metrics.trackRequestLatency);
+app.use(metrics.requestTracker);
+
 app.use(express.json());
 app.use(setAuthUser);
 
-// Add HTTP logging middleware
+app.use(trackRequestLatency);
+
+
 // app.use(Logger.httpLogger);
 
 app.use((req, res, next) => {
@@ -22,7 +26,7 @@ app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   next();
 });
-app.use(metrics.requestTracker);
+
 
 const apiRouter = express.Router();
 app.use('/api', apiRouter);
