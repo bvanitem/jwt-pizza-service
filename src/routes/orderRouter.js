@@ -3,7 +3,7 @@ const config = require('../config.js');
 const { Role, DB } = require('../database/database.js');
 const { authRouter } = require('./authRouter.js');
 const { asyncHandler, StatusCodeError } = require('../endpointHelper.js');
-const Logger = require('../logger.js');
+// const Logger = require('../logger.js');
 
 const orderRouter = express.Router();
 
@@ -91,12 +91,12 @@ orderRouter.post(
     const factoryResult = await factoryResponse.json();
     
     // Log factory request
-    Logger.log(factoryResponse.ok ? 'info' : 'error', 'Factory service request', {
-      endpoint: '/api/order',
-      status: factoryResponse.status,
-      requestBody: Logger.sanitize(factoryPayload),
-      responseBody: Logger.sanitize(factoryResult),
-    });
+    // Logger.log(factoryResponse.ok ? 'info' : 'error', 'Factory service request', {
+    //   endpoint: '/api/order',
+    //   status: factoryResponse.status,
+    //   requestBody: Logger.sanitize(factoryPayload),
+    //   responseBody: Logger.sanitize(factoryResult),
+    // });
 
     if (factoryResponse.ok) {
       res.send({ order, reportSlowPizzaToFactoryUrl: factoryResult.reportUrl, jwt: factoryResult.jwt });

@@ -6,3 +6,4 @@ coverage
 dist
 grafana-api
 grafana-logs
+logger.js

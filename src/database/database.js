@@ -4,7 +4,7 @@ const config = require('../config.js');
 const { StatusCodeError } = require('../endpointHelper.js');
 const { Role } = require('../model/model.js');
 const dbModel = require('./dbModel.js');
-const Logger = require('../logger.js');
+// const Logger = require('../logger.js');
 class DB {
   constructor() {
     this.initialized = this.initializeDatabase();
@@ -288,10 +288,10 @@ class DB {
   async query(connection, sql, params) {
     try {
       const [results] = await connection.execute(sql, params);
-      Logger.log('info', 'Database query', { query: sql, params: Logger.sanitize(params) });
+      // Logger.log('info', 'Database query', { query: sql, params: Logger.sanitize(params) });
       return results;
     } catch (err) {
-      Logger.log('error', 'Database query failed', { query: sql, params: Logger.sanitize(params), error: err.message });
+      // Logger.log('error', 'Database query failed', { query: sql, params: Logger.sanitize(params), error: err.message });
       throw err;
     }
   }
