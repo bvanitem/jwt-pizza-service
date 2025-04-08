@@ -3,7 +3,8 @@ const config = require('../config.js');
 const { Role, DB } = require('../database/database.js');
 const { authRouter } = require('./authRouter.js');
 const { asyncHandler, StatusCodeError } = require('../endpointHelper.js');
-const { trackOrders, trackRevenue } = require('../metrics.js'); 
+const metrics = require('../metrics.js');
+const logger = require('../logger.js');
 
 const orderRouter = express.Router();
 
@@ -79,34 +80,35 @@ orderRouter.post(
   authRouter.authenticateToken,
   asyncHandler(async (req, res) => {
     const orderReq = req.body;
-    const user = req.user;
-    if (!user) {
-      trackOrders('failed');
-      throw new StatusCodeError('unauthorized', 401);
-    }
+    const order = await DB.addDinerOrder(req.user, orderReq);
 
-    try {
-      const order = await DB.addDinerOrder(user, orderReq);
-      const factoryPayload = { diner: { id: user.id, name: user.name, email: user.email }, order };
-      const factoryResponse = await fetch(`${config.factory.url}/api/order`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.factory.apiKey}` },
-        body: JSON.stringify(factoryPayload),
-      });
+    const start = Date.now();
+    const r = await fetch(`${config.factory.url}/api/order`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', authorization: `Bearer ${config.factory.apiKey}` },
+      body: JSON.stringify({ diner: { id: req.user.id, name: req.user.name, email: req.user.email }, order }),
+    });
+    const end = Date.now();
+    metrics.addMetric('order_fulfillment_time', end - start, 'gauge', 'ms');
+    const j = await r.json();
 
-      const factoryResult = await factoryResponse.json();
+    const logData = {
+      path: r.url,
+      method: 'POST',
+      statusCode: r.status,
+      reqBody: JSON.stringify({ diner: { id: req.user.id, name: req.user.name, email: req.user.email }, order }),
+      resBody: JSON.stringify(r.body),
+    };
+    const level = logger.statusToLogLevel(r.status);
+    logger.log(level, 'factory', logData);
 
-      if (factoryResponse.ok) {
-        trackOrders('fulfilled'); 
-        trackRevenue(orderReq.items); 
-        res.send({ order, reportSlowPizzaToFactoryUrl: factoryResult.reportUrl, jwt: factoryResult.jwt });
-      } else {
-        trackOrders('failed'); 
-        res.status(500).send({ message: 'Failed to fulfill order at factory', reportPizzaCreationErrorToPizzaFactoryUrl: factoryResult.reportUrl });
-      }
-    } catch (error) {
-      trackOrders('failed'); 
-      throw new StatusCodeError(error.message, 500);
+    if (r.ok) {
+      metrics.trackOrders('fulfilled');
+      metrics.trackRevenue(orderReq.items);
+      res.send({ order, reportSlowPizzaToFactoryUrl: j.reportUrl, jwt: j.jwt });
+    } else {
+      metrics.trackOrders('failure');
+      res.status(500).send({ message: 'Failed to fulfill order at factory', reportPizzaCreationErrorToPizzaFactoryUrl: j.reportUrl });
     }
   })
 );

@@ -5,21 +5,13 @@ const franchiseRouter = require('./routes/franchiseRouter.js');
 const version = require('./version.json');
 const config = require('./config.js');
 const metrics = require('./metrics.js');
-// const Logger = require('./logger.js'); // Re-enabled Logger import
+const logger = require('./logger.js');
 
 const app = express();
-
-// Add metrics tracking middleware
-app.use(metrics.trackRequestLatency); // Tracks request_latency
-app.use(metrics.requestTracker); // Tracks HTTP method metrics (requests, GET, POST, etc.)
-// Removed redundant app.use(trackRequestLatency) // CHANGE: Removed redundant and incorrect middleware call
-
+app.use(metrics.trackRequestLatency);
+app.use(logger.httpLogger);
 app.use(express.json());
 app.use(setAuthUser);
-
-// Add HTTP logging middleware
-// app.use(Logger.httpLogger);
-
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE');
@@ -27,6 +19,9 @@ app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   next();
 });
+
+
+app.use(metrics.requestTracker);
 
 const apiRouter = express.Router();
 app.use('/api', apiRouter);
@@ -55,9 +50,15 @@ app.use('*', (req, res) => {
   });
 });
 
-// Updated error handler with logging
+// Default error handler for all exceptions and errors.
 app.use((err, req, res, next) => {
   res.status(err.statusCode ?? 500).json({ message: err.message, stack: err.stack });
+  const logData = {
+           message: 'Uncaught error in service', 
+           exception: err.message, 
+           stack: err.stack,
+        };
+        logger.log('error', 'Error', logData);
   next();
 });
 
