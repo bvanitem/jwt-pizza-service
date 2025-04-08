@@ -4,9 +4,11 @@ const orderRouter = require('./routes/orderRouter.js');
 const franchiseRouter = require('./routes/franchiseRouter.js');
 const version = require('./version.json');
 const config = require('./config.js');
+const metrics = require('./metrics.js');
 // const Logger = require('./logger.js'); 
 
 const app = express();
+app.use(metrics.trackRequestLatency);
 app.use(express.json());
 app.use(setAuthUser);
 
@@ -20,6 +22,7 @@ app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   next();
 });
+app.use(metrics.requestTracker);
 
 const apiRouter = express.Router();
 app.use('/api', apiRouter);

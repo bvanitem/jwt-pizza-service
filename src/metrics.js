@@ -1,105 +1,245 @@
-const config = require('./config');
+const config = require('./config.js');
+const os = require('os');
 
-// Initialize counters
-let totalRequests = 0;
+let metrics = [];
+let requests = 0;
 let getRequests = 0;
-let putRequests = 0;
 let postRequests = 0;
+let putRequests = 0;
 let deleteRequests = 0;
-let successfulAuths = 0;
-let failedAuths = 0;
-let pizzasSold = 0;
-let pizzaCreationFailures = 0;
+let authorized = 0;
+let unauthorized = 0;
+let fulfilled = 0;
+let failed = 0;
 let revenue = 0;
-let latencyServiceEndpoint = 0;
-let latencyPizzaCreation = 0;
+const activeUsers = new Set();
 
-setInterval(() => {
-  getRequests += Math.floor(Math.random() * 20) + 1;
-  putRequests += Math.floor(Math.random() * 5) + 1;
-  postRequests += Math.floor(Math.random() * 10) + 1;
-  deleteRequests += Math.floor(Math.random() * 3) + 1;
-  totalRequests = getRequests + putRequests + postRequests + deleteRequests;
-  sendMetricToGrafana('requests_total', totalRequests, 'sum', '1');
-  sendMetricToGrafana('requests_get', getRequests, 'sum', '1');
-  sendMetricToGrafana('requests_put', putRequests, 'sum', '1');
-  sendMetricToGrafana('requests_post', postRequests, 'sum', '1');
-  sendMetricToGrafana('requests_delete', deleteRequests, 'sum', '1');
+function sendMetricsPeriodically(period) {
+    setInterval(() => {
+      try {
 
-  const activeUsers = Math.floor(Math.random() * 50) + 10; // 10-60 users
-  sendMetricToGrafana('active_users', activeUsers, 'gauge', '1');
+        systemMetrics();
+        httpMetrics();
+        activeUserMetric();
 
-  successfulAuths += Math.floor(Math.random() * 15) + 1;
-  failedAuths += Math.floor(Math.random() * 5) + 1;
-  sendMetricToGrafana('auth_successful', successfulAuths, 'sum', '1');
-  sendMetricToGrafana('auth_failed', failedAuths, 'sum', '1');
-
-  const cpuUsage = Math.floor(Math.random() * 100) + 1;
-  const memoryUsage = Math.floor(Math.random() * 100) + 1;
-  sendMetricToGrafana('cpu_usage', cpuUsage, 'gauge', '%');
-  sendMetricToGrafana('memory_usage', memoryUsage, 'gauge', '%');
-
-  pizzasSold += Math.floor(Math.random() * 10) + 1;
-  pizzaCreationFailures += Math.floor(Math.random() * 3);
-  revenue += (Math.floor(Math.random() * 50) + 10) * (pizzasSold - pizzaCreationFailures); 
-  sendMetricToGrafana('pizzas_sold', pizzasSold, 'sum', '1');
-  sendMetricToGrafana('pizza_creation_failures', pizzaCreationFailures, 'sum', '1');
-  sendMetricToGrafana('revenue', revenue, 'sum', 'USD');
-
-  latencyServiceEndpoint += Math.floor(Math.random() * 200) + 10; 
-  latencyPizzaCreation += Math.floor(Math.random() * 150) + 20; 
-  sendMetricToGrafana('latency_service_endpoint', latencyServiceEndpoint, 'sum', 'ms');
-  sendMetricToGrafana('latency_pizza_creation', latencyPizzaCreation, 'sum', 'ms');
-
-}, 1000); 
-
-function sendMetricToGrafana(metricName, metricValue, type, unit) {
-  const metric = {
-    resourceMetrics: [
-      {
-        scopeMetrics: [
-          {
-            metrics: [
-              {
-                name: metricName,
-                unit: unit,
-                [type]: {
-                  dataPoints: [
+        const metric = {
+            resourceMetrics: [
+                {
+                  scopeMetrics: [
                     {
-                      asInt: metricValue,
-                      timeUnixNano: Date.now() * 1000000,
+                      metrics: metrics,
                     },
                   ],
                 },
-              },
-            ],
-          },
-        ],
-      },
-    ],
-  };
-
-  if (type === 'sum') {
-    metric.resourceMetrics[0].scopeMetrics[0].metrics[0][type].aggregationTemporality = 'AGGREGATION_TEMPORALITY_CUMULATIVE';
-    metric.resourceMetrics[0].scopeMetrics[0].metrics[0][type].isMonotonic = true;
+              ],
+            };   
+        sendMetricToGrafana(metric);
+        metrics = [];
+      } catch (error) {
+        console.log('Error sending metrics', error);
+      }
+    }, period);
   }
 
-  const body = JSON.stringify(metric);
-  fetch(`${config.url}`, {
-    method: 'POST',
-    body: body,
-    headers: { Authorization: `Bearer ${config.apiKey}`, 'Content-Type': 'application/json' },
-  })
-    .then((response) => {
-      if (!response.ok) {
-        response.text().then((text) => {
-          console.error(`Failed to push metrics data to Grafana: ${text}\n${body}`);
-        });
-      } else {
-        console.log(`Pushed ${metricName}`);
-      }
-    })
-    .catch((error) => {
-      console.error('Error pushing metrics:', error);
-    });
+
+function getCpuUsagePercentage() {
+  const cpuUsage = os.loadavg()[0] / os.cpus().length;
+  return cpuUsage.toFixed(2) * 100;
 }
+
+function getMemoryUsagePercentage() {
+  const totalMemory = os.totalmem();
+  const freeMemory = os.freemem();
+  const usedMemory = totalMemory - freeMemory;
+  const memoryUsage = (usedMemory / totalMemory) * 100;
+  return memoryUsage.toFixed(2);
+}
+
+function httpMetrics() {
+    addMetric('requests', requests, 'sum', '1');
+    addMetric('GET', getRequests, 'sum', '1');
+    addMetric('POST', postRequests, 'sum', '1');
+    addMetric('PUT', putRequests, 'sum', '1');
+    addMetric('DELETE', deleteRequests, 'sum', '1');
+}
+
+function activeUserMetric() {
+    addMetric('active_users', activeUsers.size, 'gauge', '1');
+    activeUsers.clear();
+}
+
+function systemMetrics() {
+    const cpuUsage = getCpuUsagePercentage();
+    const memoryUsage = getMemoryUsagePercentage();
+    const cpuMetric = {
+        name: "cpu",
+        unit: "%",
+        gauge: {
+            dataPoints: [
+            {
+                asDouble: cpuUsage,
+                timeUnixNano: Date.now() * 1000000,
+                attributes: [
+                {
+                    key: "source",
+                    value: { "stringValue": "jwt-pizza-service" }
+                }
+                ]
+            }
+            ]
+        }
+        };
+        metrics.push(cpuMetric);
+
+    const memoryMetric = {
+        name: "memory",
+        unit: "%",
+        gauge: {
+            dataPoints: [
+            {
+                asDouble: memoryUsage,
+                timeUnixNano: Date.now() * 1000000,
+                attributes: [
+                {
+                    key: "source",
+                    value: { "stringValue": "jwt-pizza-service" }
+                }
+                ]
+            }
+            ]
+        }}
+    metrics.push(memoryMetric);
+}
+
+async function requestTracker(req, res, next) {
+    requests++;
+    if (req.method === 'GET') {
+        getRequests++;
+    } else if (req.method === 'POST') {
+        postRequests++;
+    } else if (req.method === 'PUT') {
+        putRequests++;
+    } else if (req.method === 'DELETE') {
+        deleteRequests++;
+    }
+    next();
+  }
+
+  function addMetric(metricName, metricValue, type, unit) {
+    const metric = {
+        name: metricName,
+        unit: unit,
+        [type]: {
+        dataPoints: [
+            {
+            asInt: metricValue,
+            timeUnixNano: Date.now() * 1000000,
+            attributes: [
+                {
+                    key: "source",
+                    value: { "stringValue": "jwt-pizza-service" }
+                }
+            ]
+            },
+        ],
+        }
+    };
+    if (type === 'sum') {
+        metric[type].aggregationTemporality = 'AGGREGATION_TEMPORALITY_CUMULATIVE';
+        metric[type].isMonotonic = true;
+    }
+
+    metrics.push(metric);
+}
+
+function addDoubleMetric(metricName, metricValue, type, unit) {
+    const metric = {
+        name: metricName,
+        unit: unit,
+        [type]: {
+        dataPoints: [
+            {
+            asDouble: metricValue,
+            timeUnixNano: Date.now() * 1000000,
+            attributes: [
+                {
+                    key: "source",
+                    value: { "stringValue": "jwt-pizza-service" }
+                }
+            ]
+            },
+        ],
+        }
+    };
+    if (type === 'sum') {
+        metric[type].aggregationTemporality = 'AGGREGATION_TEMPORALITY_CUMULATIVE';
+        metric[type].isMonotonic = true;
+    }
+
+    metrics.push(metric);
+}
+
+
+function sendMetricToGrafana(metric) {
+    const body = JSON.stringify(metric);
+    fetch(`${config.metrics.url}`, {
+        method: 'POST',
+        body: body,
+        headers: { Authorization: `Bearer ${config.metrics.apiKey}`, 'Content-Type': 'application/json' },
+    })
+        .then((response) => {
+        if (!response.ok) {
+            response.text().then((text) => {
+            console.error(`Failed to push metrics data to Grafana: ${text}\n${body}`);
+            });
+        } else {
+            console.log(`Pushed metrics`);
+        }
+        })
+        .catch((error) => {
+        console.error('Error pushing metrics:', error);
+        });
+}
+
+function trackAuth(status, userId) {
+    if (status === 'authorized') {
+        authorized++;
+        activeUsers.add(userId);
+        addMetric(status, authorized, 'sum', '1');
+    } else {
+        unauthorized++;
+        addMetric(status, unauthorized, 'sum', '1');
+    }
+}
+
+async function trackRequestLatency(req, res, next) {
+    const start = Date.now();
+    const send = res.send;
+    res.send = function (body) {
+        const end = Date.now();
+        const latency = end - start;
+        addMetric('request_latency', latency, 'gauge', 'ms');
+        res.send = send;
+        res.send(body);
+    }
+    next();
+}
+
+function trackOrders(status) {
+    if (status === 'fulfilled') {
+        fulfilled++;
+        addMetric(status, fulfilled, 'sum', '1');
+    } else {
+        failed++;
+        addMetric(status, failed, 'sum', '1');
+    }
+}
+
+function trackRevenue(items) {
+    revenue += items.reduce((total, item) => total + item.price, 0);
+    addDoubleMetric('revenue', revenue, 'sum', '1');
+}
+  
+sendMetricsPeriodically(10000);
+
+module.exports = { requestTracker, trackAuth, addMetric, trackRequestLatency, trackOrders, trackRevenue }
