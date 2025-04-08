@@ -38,6 +38,7 @@ jobs:
       # - name: Lint
       #   run: npm run lint
 
+
       - name: Write config file
         run: |
           echo "module.exports = {
@@ -56,8 +57,18 @@ jobs:
               url: 'https://pizza-factory.cs329.click',
               apiKey: '${{ secrets.FACTORY_API_KEY }}',
             },
+            metrics: {
+              source: 'jwt-pizza-service',
+              url: '${{ secrets.METRICS_URL }}',
+              apiKey: '${{ secrets.METRICS_API_KEY }}',
+            },
+            logging:    {
+              source: 'jwt-pizza-service-dev',
+              userId: ${{ secrets.LOGGING_USER_ID }},
+              url: '${{ secrets.LOGGING_URL }}',
+              apiKey: '${{ secrets.LOGGING_API_KEY }}',
+            },         
           };" > src/config.js
-
       # - name: Tests
       #   run: npm test
 
@@ -91,36 +102,6 @@ jobs:
           name: package
           path: dist/
 
-      - name: Write config file
-        run: |
-          echo "module.exports = {
-            jwtSecret: '${{ secrets.JWT_SECRET }}',
-            db: {
-              connection: {
-                host: '127.0.0.1',
-                user: 'root',
-                password: 'tempdbpassword',
-                database: 'pizza',
-                connectTimeout: 60000,
-              },
-              listPerPage: 10,
-            },
-            factory: {
-              url: 'https://pizza-factory.cs329.click',
-              apiKey: '${{ secrets.FACTORY_API_KEY }}',
-            },
-            metrics: {
-              source: 'jwt-pizza-service',
-              url: '${{ secrets.METRICS_URL }}',
-              apiKey: '${{ secrets.METRICS_API_KEY }}',
-            },
-            logging:    {
-              source: 'jwt-pizza-service-dev',
-              userId: ${{ secrets.LOGGING_USER_ID }},
-              url: '${{ secrets.LOGGING_URL }}',
-              apiKey: '${{ secrets.LOGGING_API_KEY }}',
-            },         
-          };" > src/config.js
 
   deploy:
     runs-on: ubuntu-latest

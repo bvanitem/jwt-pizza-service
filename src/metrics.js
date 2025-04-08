@@ -1,4 +1,5 @@
 const config = require('./config.js');
+console.log('Loaded config in metrics.js:', JSON.stringify(config));
 const os = require('os');
 
 let metrics = [];
