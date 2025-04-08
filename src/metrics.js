@@ -14,38 +14,34 @@ let fulfilled = 0;
 let failed = 0;
 let revenue = 0;
 const activeUsers = new Set();
-const pendingMetrics = []; // CHANGE: Added to store metrics for long-running requests
 
 function sendMetricsPeriodically(period) {
-  setInterval(() => {
-    try {
-      systemMetrics();
-      httpMetrics();
-      activeUserMetric();
+    setInterval(() => {
+      try {
 
-      // CHANGE: Add pending metrics to the current batch
-      metrics.push(...pendingMetrics);
-      pendingMetrics.length = 0; // Clear pending metrics after adding
+        systemMetrics();
+        httpMetrics();
+        activeUserMetric();
 
-      const metric = {
-        resourceMetrics: [
-          {
-            scopeMetrics: [
-              {
-                metrics: metrics,
-              },
-            ],
-          },
-        ],
-      };
-      console.log('Metrics being sent:', JSON.stringify(metric));
-      sendMetricToGrafana(metric);
-      metrics = [];
-    } catch (error) {
-      console.log('Error sending metrics', error);
-    }
-  }, period);
-}
+        const metric = {
+            resourceMetrics: [
+                {
+                  scopeMetrics: [
+                    {
+                      metrics: metrics,
+                    },
+                  ],
+                },
+              ],
+            };   
+        sendMetricToGrafana(metric);
+        metrics = [];
+      } catch (error) {
+        console.log('Error sending metrics', error);
+      }
+    }, period);
+  }
+
 
 function getCpuUsagePercentage() {
   const cpuUsage = os.loadavg()[0] / os.cpus().length;
@@ -61,193 +57,190 @@ function getMemoryUsagePercentage() {
 }
 
 function httpMetrics() {
-  addMetric('requests', requests, 'sum', '1');
-  addMetric('GET', getRequests, 'sum', '1');
-  addMetric('POST', postRequests, 'sum', '1');
-  addMetric('PUT', putRequests, 'sum', '1');
-  addMetric('DELETE', deleteRequests, 'sum', '1');
+    addMetric('requests', requests, 'sum', '1');
+    addMetric('GET', getRequests, 'sum', '1');
+    addMetric('POST', postRequests, 'sum', '1');
+    addMetric('PUT', putRequests, 'sum', '1');
+    addMetric('DELETE', deleteRequests, 'sum', '1');
 }
 
 function activeUserMetric() {
-  addMetric('active_users', activeUsers.size, 'gauge', '1');
-  // CHANGE: Do not clear activeUsers here to maintain active user count
-  // activeUsers.clear();
+    addMetric('active_users', activeUsers.size, 'gauge', '1');
+    activeUsers.clear();
 }
 
 function systemMetrics() {
-  const cpuUsage = getCpuUsagePercentage();
-  const memoryUsage = getMemoryUsagePercentage();
-  const cpuMetric = {
-    name: "cpu",
-    unit: "%",
-    gauge: {
-      dataPoints: [
-        {
-          asDouble: cpuUsage,
-          timeUnixNano: Date.now() * 1000000,
-          attributes: [
+    const cpuUsage = getCpuUsagePercentage();
+    const memoryUsage = getMemoryUsagePercentage();
+    const cpuMetric = {
+        name: "cpu",
+        unit: "%",
+        gauge: {
+            dataPoints: [
             {
-              key: "source",
-              value: { "stringValue": "jwt-pizza-service" }
+                asDouble: cpuUsage,
+                timeUnixNano: Date.now() * 1000000,
+                attributes: [
+                {
+                    key: "source",
+                    value: { "stringValue": "jwt-pizza-service" }
+                }
+                ]
             }
-          ]
+            ]
         }
-      ]
-    }
-  };
-  metrics.push(cpuMetric);
+        };
+        metrics.push(cpuMetric);
 
-  const memoryMetric = {
-    name: "memory",
-    unit: "%",
-    gauge: {
-      dataPoints: [
-        {
-          asDouble: memoryUsage,
-          timeUnixNano: Date.now() * 1000000,
-          attributes: [
+    const memoryMetric = {
+        name: "memory",
+        unit: "%",
+        gauge: {
+            dataPoints: [
             {
-              key: "source",
-              value: { "stringValue": "jwt-pizza-service" }
+                asDouble: memoryUsage,
+                timeUnixNano: Date.now() * 1000000,
+                attributes: [
+                {
+                    key: "source",
+                    value: { "stringValue": "jwt-pizza-service" }
+                }
+                ]
             }
-          ]
-        }
-      ]
-    }
-  };
-  metrics.push(memoryMetric);
+            ]
+        }}
+    metrics.push(memoryMetric);
 }
 
 async function requestTracker(req, res, next) {
-  requests++;
-  if (req.method === 'GET') {
-    getRequests++;
-  } else if (req.method === 'POST') {
-    postRequests++;
-  } else if (req.method === 'PUT') {
-    putRequests++;
-  } else if (req.method === 'DELETE') {
-    deleteRequests++;
-  }
-  next();
-}
-
-function addMetric(metricName, metricValue, type, unit) {
-  const metric = {
-    name: metricName,
-    unit: unit,
-    [type]: {
-      dataPoints: [
-        {
-          asInt: metricValue,
-          timeUnixNano: Date.now() * 1000000,
-          attributes: [
-            {
-              key: "source",
-              value: { "stringValue": "jwt-pizza-service" }
-            }
-          ]
-        },
-      ],
+    requests++;
+    if (req.method === 'GET') {
+        getRequests++;
+    } else if (req.method === 'POST') {
+        postRequests++;
+    } else if (req.method === 'PUT') {
+        putRequests++;
+    } else if (req.method === 'DELETE') {
+        deleteRequests++;
     }
-  };
-  if (type === 'sum') {
-    metric[type].aggregationTemporality = 'AGGREGATION_TEMPORALITY_CUMULATIVE';
-    metric[type].isMonotonic = true;
+    next();
   }
 
-  // CHANGE: Store in pendingMetrics to avoid clearing before response
-  pendingMetrics.push(metric);
+  function addMetric(metricName, metricValue, type, unit) {
+    const metric = {
+        name: metricName,
+        unit: unit,
+        [type]: {
+        dataPoints: [
+            {
+            asInt: metricValue,
+            timeUnixNano: Date.now() * 1000000,
+            attributes: [
+                {
+                    key: "source",
+                    value: { "stringValue": "jwt-pizza-service" }
+                }
+            ]
+            },
+        ],
+        }
+    };
+    if (type === 'sum') {
+        metric[type].aggregationTemporality = 'AGGREGATION_TEMPORALITY_CUMULATIVE';
+        metric[type].isMonotonic = true;
+    }
+
+    metrics.push(metric);
 }
 
 function addDoubleMetric(metricName, metricValue, type, unit) {
-  const metric = {
-    name: metricName,
-    unit: unit,
-    [type]: {
-      dataPoints: [
-        {
-          asDouble: metricValue,
-          timeUnixNano: Date.now() * 1000000,
-          attributes: [
+    const metric = {
+        name: metricName,
+        unit: unit,
+        [type]: {
+        dataPoints: [
             {
-              key: "source",
-              value: { "stringValue": "jwt-pizza-service" }
-            }
-          ]
-        },
-      ],
+            asDouble: metricValue,
+            timeUnixNano: Date.now() * 1000000,
+            attributes: [
+                {
+                    key: "source",
+                    value: { "stringValue": "jwt-pizza-service" }
+                }
+            ]
+            },
+        ],
+        }
+    };
+    if (type === 'sum') {
+        metric[type].aggregationTemporality = 'AGGREGATION_TEMPORALITY_CUMULATIVE';
+        metric[type].isMonotonic = true;
     }
-  };
-  if (type === 'sum') {
-    metric[type].aggregationTemporality = 'AGGREGATION_TEMPORALITY_CUMULATIVE';
-    metric[type].isMonotonic = true;
-  }
 
-  // CHANGE: Store in pendingMetrics to avoid clearing before response
-  pendingMetrics.push(metric);
+    metrics.push(metric);
 }
 
+
 function sendMetricToGrafana(metric) {
-  const body = JSON.stringify(metric);
-  fetch(`${config.metrics.url}`, {
-    method: 'POST',
-    body: body,
-    headers: { Authorization: `Bearer ${config.metrics.apiKey}`, 'Content-Type': 'application/json' },
-  })
-    .then((response) => {
-      if (!response.ok) {
-        response.text().then((text) => {
-          console.error(`Failed to push metrics data to Grafana: ${text}\n${body}`);
-        });
-      } else {
-        console.log(`Pushed metrics`);
-      }
+    const body = JSON.stringify(metric);
+    fetch(`${config.metrics.url}`, {
+        method: 'POST',
+        body: body,
+        headers: { Authorization: `Bearer ${config.metrics.apiKey}`, 'Content-Type': 'application/json' },
     })
-    .catch((error) => {
-      console.error('Error pushing metrics:', error);
-    });
+        .then((response) => {
+        if (!response.ok) {
+            response.text().then((text) => {
+            console.error(`Failed to push metrics data to Grafana: ${text}\n${body}`);
+            });
+        } else {
+            console.log(`Pushed metrics`);
+        }
+        })
+        .catch((error) => {
+        console.error('Error pushing metrics:', error);
+        });
 }
 
 function trackAuth(status, userId) {
-  if (status === 'authorized') {
-    authorized++;
-    activeUsers.add(userId);
-    addMetric(status, authorized, 'sum', '1');
-  } else {
-    unauthorized++;
-    addMetric(status, unauthorized, 'sum', '1');
-  }
+    if (status === 'authorized') {
+        authorized++;
+        activeUsers.add(userId);
+        addMetric(status, authorized, 'sum', '1');
+    } else {
+        unauthorized++;
+        addMetric(status, unauthorized, 'sum', '1');
+    }
 }
 
 async function trackRequestLatency(req, res, next) {
-  const start = Date.now();
-  const send = res.send;
-  res.send = function (body) {
-    const end = Date.now();
-    const latency = end - start;
-    addMetric('request_latency', latency, 'gauge', 'ms');
-    res.send = send;
-    res.send(body);
-  };
-  next();
+    const start = Date.now();
+    const send = res.send;
+    res.send = function (body) {
+        const end = Date.now();
+        const latency = end - start;
+        addMetric('request_latency', latency, 'gauge', 'ms');
+        res.send = send;
+        res.send(body);
+    }
+    next();
 }
 
 function trackOrders(status) {
-  if (status === 'fulfilled') {
-    fulfilled++;
-    addMetric(status, fulfilled, 'sum', '1');
-  } else {
-    failed++;
-    addMetric(status, failed, 'sum', '1');
-  }
+    if (status === 'fulfilled') {
+        fulfilled++;
+        addMetric(status, fulfilled, 'sum', '1');
+    } else {
+        failed++;
+        addMetric(status, failed, 'sum', '1');
+    }
 }
 
 function trackRevenue(items) {
-  revenue += items.reduce((total, item) => total + item.price, 0);
-  addDoubleMetric('revenue_total', revenue, 'sum', '1'); // Ensure metric name matches Grafana query
+    revenue += items.reduce((total, item) => total + item.price, 0);
+    addDoubleMetric('revenue_total', revenue, 'sum', '1');
 }
-
+  
 sendMetricsPeriodically(10000);
 
-module.exports = { requestTracker, trackAuth, addMetric, trackRequestLatency, trackOrders, trackRevenue };
+module.exports = { requestTracker, trackAuth, addMetric, trackRequestLatency, trackOrders, trackRevenue }
