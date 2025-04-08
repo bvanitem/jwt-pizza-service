@@ -1,77 +1,60 @@
-const config = require('./config');
+const config = require('./config.js').logging;
 
 class Logger {
-  static sanitize(data) {
-    if (!data) return data;
-    const sanitized = JSON.parse(JSON.stringify(data)); // Deep copy
-    if (sanitized.password) sanitized.password = '[REDACTED]';
-    if (sanitized.token) sanitized.token = '[REDACTED]';
-    return sanitized;
-  }
-
-  static sendLogToGrafana(event) {
-    const timestamp = Date.now() * 1000000; // Nanoseconds for Loki
-    const logEntry = {
-      streams: [
-        {
-          stream: {
-            source: config.logging.source,
-            level: event.level || 'info',
-          },
-          values: [[timestamp.toString(), JSON.stringify(this.sanitize(event))]],
-        },
-      ],
-    };
-
-    const body = JSON.stringify(logEntry);
-    fetch(config.logging.url, {
-      method: 'POST',
-      body: body,
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${config.logging.userId}:${config.logging.apiKey}`,
-      },
-    })
-      .then((res) => {
-        if (!res.ok) console.error(`Failed to send log to Grafana: ${res.status}`);
-      })
-      .catch((err) => console.error('Error sending log:', err));
-  }
-
-  // Use an arrow function to preserve `this` context
-  static httpLogger = (req, res, next) => {
-    const start = Date.now();
-    const originalSend = res.send;
-
-    // Capture response body
-    res.send = function (body) {
-      res.locals.body = body;
-      return originalSend.apply(res, arguments);
-    };
-
-    res.on('finish', () => {
-      const duration = Date.now() - start;
-      const logEvent = {
-        level: res.statusCode >= 400 ? 'error' : 'info',
-        message: 'HTTP Request',
+  httpLogger = (req, res, next) => {
+    let send = res.send;
+    res.send = (resBody) => {
+      const logData = {
+        authorized: !!req.headers.authorization,
+        path: req.originalUrl,
         method: req.method,
-        path: req.path,
         statusCode: res.statusCode,
-        hasAuthHeader: !!req.headers.authorization,
-        requestBody: Logger.sanitize(req.body),
-        responseBody: Logger.sanitize(res.locals.body),
-        durationMs: duration,
+        reqBody: JSON.stringify(req.body),
+        resBody: JSON.stringify(resBody),
       };
-      Logger.sendLogToGrafana(logEvent);
-    });
-
+      const level = this.statusToLogLevel(res.statusCode);
+      this.log(level, 'http', logData);
+      res.send = send;
+      return res.send(resBody);
+    };
     next();
   };
 
-  static log(level, message, data = {}) {
-    const logEvent = { level, message, ...data };
+  log(level, type, logData) {
+    const labels = { component: config.source, level: level, type: type };
+    const values = [this.nowString(), this.sanitize(logData)];
+    const logEvent = { streams: [{ stream: labels, values: [values] }] };
+
     this.sendLogToGrafana(logEvent);
   }
-}
 
-module.exports = Logger;
+  statusToLogLevel(statusCode) {
+    if (statusCode >= 500) return 'error';
+    if (statusCode >= 400) return 'warn';
+    return 'info';
+  }
+
+  nowString() {
+    return (Math.floor(Date.now()) * 1000000).toString();
+  }
+
+  sanitize(logData) {
+    logData = JSON.stringify(logData);
+    return logData.replace(/\\"password\\":\s*\\"[^"]*\\"/g, '\\"password\\": \\"*****\\"');
+  }
+
+  sendLogToGrafana(event) {
+    const body = JSON.stringify(event);
+    fetch(`${config.url}`, {
+      method: 'post',
+      body: body,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${config.userId}:${config.apiKey}`,
+      },
+    }).then((res) => {
+      if (!res.ok) console.log('Failed to send log to Grafana');
+    });
+  }
+}
+module.exports = new Logger();
